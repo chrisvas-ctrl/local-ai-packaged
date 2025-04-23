@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" >
+  <url>
+    <loc>https://docs.cradlepoint.com/p/wwan-documentation</loc>
+    <lastmod>2024-10-16</lastmod>
+  </url>
+  <url>
+    <loc>https://docs.cradlepoint.com/p/cradlepoint-release-notes</loc>
+    <lastmod>2025-04-04</lastmod>
+  </url>
+  <url>
+    <loc>https://docs.cradlepoint.com/p/pub_list</loc>
+    <lastmod>2025-03-05</lastmod>
+  </url>
+  <url>
+    <loc>https://docs.cradlepoint.com/p/NCPN-documentation</loc>
+    <lastmod>2025-02-10</lastmod>
+  </url>
+  <url>
+    <loc>https://docs.cradlepoint.com/p/SASE-documentation</loc>
+    <lastmod>2025-01-28</lastmod>
+  </url>
+  <url>
+    <loc>https://docs.cradlepoint.com/p/NCOM</loc>
+    <lastmod>2025-01-31</lastmod>
+  </url>
+  <url>
+    <loc>https://docs.cradlepoint.com/p/devices</loc>
+    <lastmod>2025-04-02</lastmod>
+  </url>
+  <url>
+    <loc>https://docs.cradlepoint.com/p/cradlepoint-quick-start-guides</loc>
+    <lastmod>2025-01-14</lastmod>
+  </url>
+  <url>
+    <loc>https://docs.cradlepoint.com/p/NCX-documentation</loc>
+    <lastmod>2025-01-28</lastmod>
+  </url>
+  <url>
+    <loc>https://docs.cradlepoint.com/p/netcloud-manager</loc>
+    <lastmod>2025-03-26</lastmod>
+  </url>
+</urlset>

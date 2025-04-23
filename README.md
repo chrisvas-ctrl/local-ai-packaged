@@ -2,14 +2,29 @@
 
 **Self-hosted AI Package** is an open, docker compose template that
 quickly bootstraps a fully featured Local AI and Low Code development
-environment including Ollama for your local LLMs, Open WebUI for an interface to chat with your N8N agents, and Supabase for your database, vector store, and authentication. 
+environment including Ollama for your local LLMs, Open WebUI for an interface to chat with your N8N agents, and Supabase for your database, vector store, and authentication.
 
 This is Cole's version with a couple of improvements and the addition of Supabase, Open WebUI, Flowise, SearXNG, and Caddy!
 Postgres was also removed since Supabase runs Postgres under the hood.
-Also, the local RAG AI Agent workflow from the video will be automatically in your 
+Also, the local RAG AI Agent workflow from the video will be automatically in your
 n8n instance if you use this setup instead of the base one provided by n8n!
 
 ## Important Links
+
+### Service Ports
+
+All services can be accessed directly through their respective ports:
+
+- N8N: http://localhost:5678
+- Open WebUI: http://localhost:3000
+- Flowise: http://localhost:3001
+- Ollama API: http://localhost:11434
+- Supabase: http://localhost:8000
+- Crawl4AI: http://localhost:11235
+- SearXNG: http://localhost:8080
+- Qdrant: http://localhost:6333
+
+### Community Links
 
 - [Local AI community](https://thinktank.ottomator.ai/c/local-ai/18) forum over in the oTTomator Think Tank
 
@@ -46,7 +61,7 @@ builder that pairs very well with n8n
 store with an comprehensive API. Even though you can use Supabase for RAG, this was
 kept unlike Postgres since it's faster than Supabase so sometimes is the better option.
 
-✅ [**SearXNG**](https://searxng.org/) - Open-source, free internet metasearch engine which aggregates 
+✅ [**SearXNG**](https://searxng.org/) - Open-source, free internet metasearch engine which aggregates
 results from up to 229 search services. Users are neither tracked nor profiled, hence the fit with the local AI package.
 
 ✅ [**Caddy**](https://caddyserver.com/) - Managed HTTPS/TLS for custom domains
@@ -62,6 +77,7 @@ Before you begin, make sure you have the following software installed:
 ## Installation
 
 Clone the repository and navigate to the project directory:
+
 ```bash
 git clone https://github.com/coleam00/local-ai-packaged.git
 cd local-ai-packaged
@@ -71,6 +87,7 @@ Before running the services, you need to set up your environment variables for S
 
 1. Make a copy of `.env.example` and rename it to `.env` in the root directory of the project
 2. Set the following required environment variables:
+
    ```bash
    ############
    # N8N Configuration
@@ -94,6 +111,7 @@ Before running the services, you need to set up your environment variables for S
 > Make sure to generate secure random values for all secrets. Never use the example values in production.
 
 3. Set the following environment variables if deploying to production, otherwise leave commented:
+
    ```bash
    ############
    # Caddy Config
@@ -106,7 +124,7 @@ Before running the services, you need to set up your environment variables for S
    OLLAMA_HOSTNAME=:ollama.yourdomain.com
    SEARXNG_HOSTNAME=searxng.yourdomain.com
    LETSENCRYPT_EMAIL=your-email-address
-   ```   
+   ```
 
 ---
 
@@ -133,11 +151,13 @@ python start_services.py --profile gpu-amd
 If you're using a Mac with an M1 or newer processor, you can't expose your GPU to the Docker instance, unfortunately. There are two options in this case:
 
 1. Run the starter kit fully on CPU:
+
    ```bash
    python start_services.py --profile cpu
    ```
 
 2. Run Ollama on your Mac for faster inference, and connect to that from the n8n instance:
+
    ```bash
    python start_services.py --profile none
    ```
@@ -149,8 +169,7 @@ If you're using a Mac with an M1 or newer processor, you can't expose your GPU t
 If you're running OLLAMA locally on your Mac (not in Docker), you need to modify the OLLAMA_HOST environment variable in the n8n service configuration. Update the x-n8n section in your Docker Compose file as follows:
 
 ```yaml
-x-n8n: &service-n8n
-  # ... other configurations ...
+x-n8n: &service-n8n # ... other configurations ...
   environment:
     # ... other environment variables ...
     - OLLAMA_HOST=host.docker.internal:11434
@@ -179,6 +198,7 @@ python start_services.py --profile cpu
 Before running the above commands to pull the repo and install everything:
 
 1. Run the commands as root to open up the necessary ports:
+
    - ufw enable
    - ufw allow 8000 && ufw allow 3001 && ufw allow 3000 && ufw allow 5678 && ufw allow 80 && ufw allow 443
    - ufw allow 8080 (if you want to expose SearXNG)
@@ -186,7 +206,7 @@ Before running the above commands to pull the repo and install everything:
    - ufw reload
 
 2. Set up A records for your DNS provider to point your subdomains you'll set up in the .env file for Caddy
-to the IP address of your cloud instance.
+   to the IP address of your cloud instance.
 
    For example, A record to point n8n to [cloud instance IP] for n8n.yourdomain.com
 
@@ -203,7 +223,7 @@ to get started.
 2. Open the included workflow:
    <http://localhost:5678/workflow/vTN9y2dLXqTiDfPT>
 3. Create credentials for every service:
-   
+
    Ollama URL: http://ollama:11434
 
    Postgres (through Supabase): use DB, username, and password from .env. IMPORTANT: Host is 'db'
@@ -214,22 +234,23 @@ to get started.
    Google Drive: Follow [this guide from n8n](https://docs.n8n.io/integrations/builtin/credentials/google/).
    Don't use localhost for the redirect URI, just use another domain you have, it will still work!
    Alternatively, you can set up [local file triggers](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.localfiletrigger/).
+
 4. Select **Test workflow** to start running the workflow.
 5. If this is the first time you’re running the workflow, you may need to wait
    until Ollama finishes downloading Llama3.1. You can inspect the docker
    console logs to check on the progress.
 6. Make sure to toggle the workflow as active and copy the "Production" webhook URL!
 7. Open <http://localhost:3000/> in your browser to set up Open WebUI.
-You’ll only have to do this once. You are NOT creating an account with Open WebUI in the 
-setup here, it is only a local account for your instance!
+   You’ll only have to do this once. You are NOT creating an account with Open WebUI in the
+   setup here, it is only a local account for your instance!
 8. Go to Workspace -> Functions -> Add Function -> Give name + description then paste in
-the code from `n8n_pipe.py`
+   the code from `n8n_pipe.py`
 
    The function is also [published here on Open WebUI's site](https://openwebui.com/f/coleam/n8n_pipe/).
 
 9. Click on the gear icon and set the n8n_url to the production URL for the webhook
-you copied in a previous step.
-10. Toggle the function on and now it will be available in your model dropdown in the top left! 
+   you copied in a previous step.
+10. Toggle the function on and now it will be available in your model dropdown in the top left!
 
 To open n8n at any time, visit <http://localhost:5678/> in your browser.
 To open Open WebUI at any time, visit <http://localhost:3000/>.
@@ -260,7 +281,8 @@ docker compose -p localai -f docker-compose.yml -f supabase/docker/docker-compos
 docker compose -p localai -f docker-compose.yml -f supabase/docker/docker-compose.yml pull
 
 # Start services again with your desired profile
-python start_services.py --profile <your-profile>
+# python3 start_services.py --profile <your-profile>
+python3 start_services.py --profile cpu
 ```
 
 Replace `<your-profile>` with one of: `cpu`, `gpu-nvidia`, `gpu-amd`, or `none`.
@@ -284,6 +306,7 @@ Here are solutions to common issues you might encounter:
 ### GPU Support Issues
 
 - **Windows GPU Support**: If you're having trouble running Ollama with GPU support on Windows with Docker Desktop:
+
   1. Open Docker Desktop settings
   2. Enable WSL 2 backend
   3. See the [Docker GPU documentation](https://docs.docker.com/desktop/features/gpu/) for more details

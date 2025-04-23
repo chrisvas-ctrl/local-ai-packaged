@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://docs.cradlepoint.com/sitemap/home.xml</loc>
+    <lastmod>2025-04-05T04:01:35.938+00:00</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>https://docs.cradlepoint.com/sitemap/pages.xml</loc>
+    <lastmod>2025-04-05T04:01:35.938+00:00</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>https://docs.cradlepoint.com/sitemap/structured/1.xml</loc>
+    <lastmod>2025-04-05T04:01:35.938+00:00</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>https://docs.cradlepoint.com/sitemap/unstructured/1.xml</loc>
+    <lastmod>2025-04-05T04:01:35.938+00:00</lastmod>
+  </sitemap>
+</sitemapindex>

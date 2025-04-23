@@ -1,0 +1,1037 @@
+{
+  "name": "Starlink Agent: n8n + Crawl4AI",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "773ca93b-66a7-4187-9ac2-8bfa0d6c2293",
+      "name": "When clicking ‘Test workflow’",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        840
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.starlink.com/support/sitemap/en-US.xml",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "fada2002-e648-4d67-96fa-f4b43b7d1ebc",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -120,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "f75cae97-2fec-4431-b0a4-5c8fd6535b5a",
+      "name": "XML",
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        80,
+        840
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "=urlset.url",
+        "options": {}
+      },
+      "id": "4284ccae-b391-45c1-a9f3-58a28635ae89",
+      "name": "Split Out",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        280,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "d249a92e-53fc-46d3-aa3d-607594997620",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        900,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "id": "f98b48bb-6c01-4e92-8442-8bb66907b756",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        800
+      ],
+      "webhookId": "ea366f79-e8ba-4ce9-92fc-eafbd8f4d575"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sea-turtle-app-fff2p.ondigitalocean.app/crawl",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "urls",
+              "value": "={{ $json.loc }}"
+            },
+            {
+              "name": "priority",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ef75cd89-3a2e-4fb8-b274-b9cd1168b207",
+      "name": "HTTP Request1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        800
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vAggrPYy8qY50hWh",
+          "name": "cvtestauth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://sea-turtle-app-fff2p.ondigitalocean.app/task/{{ $json.task_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "b7d1db46-239f-4899-ab8b-a4402ca581c1",
+      "name": "HTTP Request2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        800
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 5,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vAggrPYy8qY50hWh",
+          "name": "cvtestauth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9d90c1ce-590e-40a5-ae8c-d92326032975",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3d834d17-597d-4149-b21d-071025b7548d",
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.result.markdown }}",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "page",
+                "value": "={{ $json.result.url }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "bb41fdbe-ad1f-4a88-a81b-708846b01f4d",
+      "name": "Default Data Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [
+        2140,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "chunkSize": 5000
+      },
+      "id": "80b5f8e8-6e52-4a86-b250-fd6f4b1658f5",
+      "name": "Character Text Splitter",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        2280,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "82dc1908-ab3c-4bde-a50a-a80b8c095c29",
+      "name": "Embeddings OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.1,
+      "position": [
+        1980,
+        800
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "3IYOBa2hTl8zHZVk",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f2bcdb54-e1fe-4670-99aa-6eec973bf5f1",
+              "name": "task_id",
+              "value": "={{ $('HTTP Request1').item.json.task_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1d7eab2-7aa4-4004-8506-ca8281efea23",
+      "name": "Edit Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2000,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "6d6f0955-bbd6-461f-bfb8-66b4241e5993",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        760,
+        40
+      ],
+      "webhookId": "e20a54aa-f119-4e7d-bc99-3366eae4e7d9"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "5bfce592-c008-41d6-81da-ba5a9f4d4859",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        920,
+        260
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "3IYOBa2hTl8zHZVk",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableName": "n8n_starlink_chat_histories"
+      },
+      "id": "aa948c2a-fea7-417a-b9aa-901cd9f4d47b",
+      "name": "Postgres Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        1060,
+        260
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "1e19B5YztzIbFog7",
+          "name": "Ultimate Supabase RAG AI Agent Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "pydantic_ai_docs",
+        "description": "Retrieves data related to Pydantic AI using their documentation."
+      },
+      "id": "32e66a9b-9568-4364-82fa-85d78c727b3d",
+      "name": "Vector Store Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolVectorStore",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "b7384a10-f3b3-4895-893a-c477eff639ec",
+      "name": "Embeddings OpenAI1",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.1,
+      "position": [
+        1160,
+        460
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "3IYOBa2hTl8zHZVk",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "cf9b4460-e0cf-417e-a433-96ddeacea7c0",
+      "name": "OpenAI Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        340
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "3IYOBa2hTl8zHZVk",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "value": "documents_starlink_kb",
+          "mode": "list",
+          "cachedResultName": "documents_starlink_kb"
+        },
+        "options": {
+          "queryName": "match_documents"
+        }
+      },
+      "id": "7b90f8b7-112f-44f0-b7ae-333dee801507",
+      "name": "Supabase Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        580
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "6HMycE9sMVOTtt1l",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "1385eb6d-607d-400f-b826-a2593b4f74eb",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1020,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "tableName": {
+          "__rl": true,
+          "value": "documents_starlink_kb",
+          "mode": "list",
+          "cachedResultName": "documents_starlink_kb"
+        },
+        "options": {
+          "queryName": "match_documents"
+        }
+      },
+      "id": "51a8c0b2-359d-405f-88ac-166c013fd9c5",
+      "name": "Supabase Vector Store1",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        320
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "6HMycE9sMVOTtt1l",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# n8n + Crawl4AI Agent\n\n## Author: [Cole Medin](https://www.youtube.com/@ColeMedin)\n\nThis AI agent demonstrates how to use a Docker deployment of Crawl4AI to leverage this incredible open source web scraping tool directly in n8n.\n\nThe prerequisite for this workflow is that you have Crawl4AI hosted in a Docker container following these [instructions in the their docs](https://docs.crawl4ai.com/core/docker-deploymeny/).\n\n## How to use this workflow\n\n1. Execute the bottom workflow by clicking on \"Test workflow\". This will ingest all the Pydantic AI documentation into the Supabase DB for RAG.\n\n2. Chat with the agent with the \"Chat\" button - it'll be able to answer questions about Pydantic AI using the documentation as its source!\n\n## Extend this workflow!\n\nThis is just a starting point showing you how to use Crawl4AI in n8n! Feel free to take this along with the Crawl4AI documentation to run wild with building RAG AI agents. The possibilities with this setup are endless!",
+        "height": 613.6610941618816,
+        "width": 589.875,
+        "color": 6
+      },
+      "id": "d77cc34f-685d-475a-a2b8-3deeacbc9fdd",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "includeOtherFields": true,
+        "include": "except",
+        "excludeFields": "[\"xhtml:link\"]",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        840
+      ],
+      "id": "64b53a0e-0267-43fa-ab68-54d1beab4eba",
+      "name": "Exlude xhtml:link list"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7d065e3f-f2a8-4a27-ab99-55a8f2a62d26",
+              "leftValue": "={{ $json.loc }}",
+              "rightValue": "/support/article/",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        700
+      ],
+      "id": "139ed9d5-fde4-4e14-8af1-6fddfcc5833d",
+      "name": "Keep only articles"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sea-turtle-app-fff2p.ondigitalocean.app/crawl",
+        "options": {}
+      },
+      "name": "Start Crawl",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        720,
+        1340
+      ],
+      "id": "d124b1b3-b613-4e78-950f-8fbfe46f0b89"
+    },
+    {
+      "parameters": {
+        "unit": "seconds"
+      },
+      "name": "Initial Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        920,
+        1340
+      ],
+      "id": "6dfa237a-ac92-4f70-a40e-e2e392769fc5",
+      "webhookId": "0d700199-bd34-4f22-abe9-4ca3f71cdb74"
+    },
+    {
+      "parameters": {
+        "functionCode": "item.json.retryCount = (item.json.retryCount || 0);\nitem.json.task_id = item.json.task_id || $json.task_id;\nreturn item;"
+      },
+      "name": "Initialize Retry Count",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        960,
+        1200
+      ],
+      "id": "32b365bc-f02e-46bb-95cb-2a9ec8b05d1a"
+    },
+    {
+      "parameters": {
+        "url": "https://sea-turtle-app-fff2p.ondigitalocean.app/task/{{$json.task_id}}",
+        "options": {}
+      },
+      "name": "Check Task Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1320,
+        1340
+      ],
+      "id": "476f3e90-c2ed-4920-bc65-fda29989d7d9"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"errorDetails\"]?.httpCode}}",
+              "value2": "404"
+            }
+          ]
+        }
+      },
+      "name": "Is 404?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        1340
+      ],
+      "id": "cab2964d-ee6c-43ec-bbc0-d0d55a7e50c1"
+    },
+    {
+      "parameters": {
+        "unit": "seconds"
+      },
+      "name": "Retry Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1720,
+        1440
+      ],
+      "id": "b2a27d0c-be79-47f7-bba0-e8b98feee1a6",
+      "webhookId": "9c82e5bb-bb40-4b63-a429-d3045b20a3b7"
+    },
+    {
+      "parameters": {
+        "functionCode": "item.json.retryCount = item.json.retryCount + 1;\nreturn item;"
+      },
+      "name": "Increment Retry Count",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        1440
+      ],
+      "id": "5187430e-dd12-4ba8-87b5-004d21ce8cec"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.retryCount}}",
+              "operation": "largerEqual",
+              "value2": 3
+            }
+          ]
+        }
+      },
+      "name": "Retry Limit Reached?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2120,
+        1440
+      ],
+      "id": "0e59b9d3-ad2e-4beb-a642-36a422201ef6"
+    },
+    {
+      "parameters": {},
+      "name": "End (After Retry Limit)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2320,
+        1380
+      ],
+      "id": "231cf025-4b75-4a79-8b7b-33fdc7301122"
+    },
+    {
+      "parameters": {},
+      "name": "Continue to Embed Step",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1720,
+        1240
+      ],
+      "id": "7bbd9198-42f3-421c-a710-9fe2151b4940"
+    },
+    {
+      "parameters": {
+        "jsCode": "item.json.retryCount = (item.json.retryCount || 0);\nitem.json.task_id = item.json.task_id || $json.task_id;\nreturn item;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        1580
+      ],
+      "id": "a99274f8-bad3-4218-9bab-42c3ea89a9c8",
+      "name": "Code"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Test workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "XML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "XML": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Exlude xhtml:link list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vector Store Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Vector Store Tool",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store1": {
+      "ai_vectorStore": [
+        [
+          {
+            "node": "Vector Store Tool",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exlude xhtml:link list": {
+      "main": [
+        [
+          {
+            "node": "Keep only articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep only articles": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Crawl": {
+      "main": [
+        [
+          {
+            "node": "Initial Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initial Wait": {
+      "main": [
+        []
+      ]
+    },
+    "Initialize Retry Count": {
+      "main": [
+        []
+      ]
+    },
+    "Check Task Status": {
+      "main": [
+        [
+          {
+            "node": "Is 404?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is 404?": {
+      "main": [
+        [
+          {
+            "node": "Continue to Embed Step",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Wait": {
+      "main": [
+        [
+          {
+            "node": "Increment Retry Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Retry Count": {
+      "main": [
+        [
+          {
+            "node": "Retry Limit Reached?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Limit Reached?": {
+      "main": [
+        [
+          {
+            "node": "Check Task Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "End (After Retry Limit)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Check Task Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5ac41703-e5b7-4fc1-8edf-5f8298fd37a2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "05019ba6d112fdd1f2c1ec84ee73268009b3a0746293a0bfd0600db0fe869653"
+  },
+  "id": "MzONfEiPYtSjfLWn",
+  "tags": []
+}

@@ -1,8 +1,3 @@
-{
-    # Global options - works for both environments
-    email {$LETSENCRYPT_EMAIL}
-}
-
 # N8N
 {$N8N_HOSTNAME} {
     # For domains, Caddy will automatically use Let's Encrypt

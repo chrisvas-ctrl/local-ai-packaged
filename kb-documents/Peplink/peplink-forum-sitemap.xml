@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <sitemap>
+         <loc>https://forum.peplink.com/sitemap_recent.xml</loc>
+         <lastmod>2025-04-01T14:32:16Z</lastmod>
+      </sitemap>
+      <sitemap>
+         <loc>https://forum.peplink.com/sitemap_1.xml</loc>
+         <lastmod>2025-04-01T14:32:16Z</lastmod>
+      </sitemap>
+      <sitemap>
+         <loc>https://forum.peplink.com/sitemap_2.xml</loc>
+         <lastmod>2025-03-29T17:03:23Z</lastmod>
+      </sitemap>
+      <sitemap>
+         <loc>https://forum.peplink.com/sitemap_3.xml</loc>
+         <lastmod>2025-03-29T17:03:23Z</lastmod>
+      </sitemap>
+</sitemapindex>
