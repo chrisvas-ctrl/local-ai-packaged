@@ -15,7 +15,7 @@ n8n instance if you use this setup instead of the base one provided by n8n!
 
 All services can be accessed directly through their respective ports:
 
-- N8N: http://localhost:5678
+- N8N: http://localhost:5jjjjjjjj678
 - Open WebUI: http://localhost:3000
 - Flowise: http://localhost:3001
 - Ollama API: http://localhost:11434
