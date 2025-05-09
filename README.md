@@ -4,13 +4,8 @@
 quickly bootstraps a fully featured Local AI and Low Code development
 environment including Ollama for your local LLMs, Open WebUI for an interface to chat with your N8N agents, and Supabase for your database, vector store, and authentication.
 
-<<<<<<< HEAD
 This is Cole's version with a couple of improvements and the addition of Supabase, Open WebUI, Flowise, Langfuse, SearXNG, and Caddy!
 Also, the local RAG AI Agent workflows from the video will be automatically in your
-=======
-This is Cole's version with a couple of improvements and the addition of Supabase, Open WebUI, Flowise, Langfuse, SearXNG, and Caddy!
-Also, the local RAG AI Agent workflows from the video will be automatically in your 
->>>>>>> afc5dad48c8e662875d1c99107b207440509fa35
 n8n instance if you use this setup instead of the base one provided by n8n!
 
 ## Important Links
