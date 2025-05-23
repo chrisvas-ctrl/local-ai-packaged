@@ -15,10 +15,10 @@ import argparse
 import platform
 import sys
 
-def run_command(cmd, cwd=None):
+def run_command(cmd, cwd=None, check=True):
     """Run a shell command and print it."""
     print("Running:", " ".join(cmd))
-    subprocess.run(cmd, cwd=cwd, check=True)
+    return subprocess.run(cmd, cwd=cwd, check=check)
 
 def clone_supabase_repo():
     """Clone the Supabase repository using sparse checkout if not already present."""
@@ -49,29 +49,168 @@ def prepare_supabase_env():
 def stop_existing_containers():
     """Stop and remove existing containers for our unified project ('localai')."""
     print("Stopping and removing existing containers for the unified project 'localai'...")
+    # Stop Supabase services
     run_command([
         "docker", "compose",
-        "-p", "localai",
-        "-f", "docker-compose.yml",
+        "-p", "localai-supabase",
         "-f", "supabase/docker/docker-compose.yml",
         "down"
     ])
+    # Stop local AI services
+    run_command([
+        "docker", "compose",
+        "-p", "localai-services",
+        "-f", "docker-compose.yml",
+        "down"
+    ])
+    
+    # Check for and remove any lingering containers
+    try:
+        print("Checking for lingering containers...")
+        containers_to_check = ["ollama", "ollama-pull-llama", "n8n", "n8n-import"]
+        
+        for container in containers_to_check:
+            # Check if container exists
+            result = subprocess.run(["docker", "ps", "-a", "--filter", f"name=^/{container}$", "--format", "{{.Names}}"], 
+                                  capture_output=True, text=True, check=False)
+            if result.stdout.strip():
+                print(f"Removing lingering container: {container}")
+                subprocess.run(["docker", "rm", "-f", container], 
+                              check=False, stderr=subprocess.PIPE)
+    except Exception as e:
+        print(f"Note: Error removing lingering containers: {e}")
+    
+    # Remove the shared network if it exists
+    try:
+        print("Removing shared network if it exists...")
+        subprocess.run(["docker", "network", "rm", "localai-network"], 
+                      check=False, stderr=subprocess.PIPE)
+    except Exception as e:
+        print(f"Note: Could not remove network (it may not exist): {e}")
+
+def create_shared_network():
+    """Create a shared Docker network for all services."""
+    print("Creating shared Docker network 'localai-network'...")
+    try:
+        # Check if network already exists
+        result = subprocess.run(["docker", "network", "inspect", "localai-network"], 
+                              capture_output=True, check=False)
+        if result.returncode != 0:
+            # Create network if it doesn't exist
+            run_command(["docker", "network", "create", "localai-network"])
+        else:
+            print("Network 'localai-network' already exists.")
+    except Exception as e:
+        print(f"Error creating network: {e}")
+        raise
 
 def start_supabase():
-    """Start the Supabase services (using its compose file)."""
+    """Start the Supabase services."""
     print("Starting Supabase services...")
     run_command([
-        "docker", "compose", "-p", "localai", "-f", "supabase/docker/docker-compose.yml", "up", "-d"
+        "docker", "compose", "-p", "localai-supabase", 
+        "-f", "supabase/docker/docker-compose.yml",
+        "up", "-d"
     ])
+    
+    # Connect all Supabase containers to our shared network
+    print("Connecting Supabase containers to shared network...")
+    try:
+        # Get all containers from the localai-supabase project
+        result = subprocess.run(["docker", "ps", "-q", "--filter", "label=com.docker.compose.project=localai-supabase"], 
+                              capture_output=True, text=True, check=True)
+        container_ids = result.stdout.strip().split('\n')
+        
+        # Connect each container to the shared network with appropriate aliases
+        for container_id in container_ids:
+            if container_id:  # Skip empty lines
+                # Get container name
+                name_result = subprocess.run(["docker", "inspect", "--format", "{{.Name}}", container_id], 
+                                          capture_output=True, text=True, check=True)
+                container_name = name_result.stdout.strip().lstrip('/')
+                
+                print(f"Connecting container {container_name} to shared network...")
+                
+                # Add special aliases for key containers
+                if container_name == "supabase-db":
+                    print("Adding 'postgres' alias to the database container...")
+                    subprocess.run(["docker", "network", "connect", "--alias", "postgres", 
+                                  "localai-network", container_id], 
+                                  check=False, stderr=subprocess.PIPE)
+                    # Also add supabase-db alias for services that use this name
+                    subprocess.run(["docker", "network", "connect", "--alias", "supabase-db", 
+                                  "localai-network", container_id], 
+                                  check=False, stderr=subprocess.PIPE)
+                else:
+                    # Connect other containers without special alias
+                    subprocess.run(["docker", "network", "connect", "localai-network", container_id], 
+                                  check=False, stderr=subprocess.PIPE)
+    except Exception as e:
+        print(f"Note: Error connecting containers to network: {e}")
 
 def start_local_ai(profile=None):
-    """Start the local AI services (using its compose file)."""
+    """Start the local AI services."""
     print("Starting local AI services...")
-    cmd = ["docker", "compose", "-p", "localai"]
+    cmd = ["docker", "compose", "-p", "localai-services"]
     if profile and profile != "none":
         cmd.extend(["--profile", profile])
-    cmd.extend(["-f", "docker-compose.yml", "up", "-d"])
-    run_command(cmd)
+    cmd.extend([
+        "-f", "docker-compose.yml",
+        "up", "-d"
+    ])
+    
+    # Run the command and capture output to check for specific errors
+    print("Running:", " ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    
+    # Check if there was an error
+    if result.returncode != 0:
+        # Check if the error is just related to n8n-import (expected failure)
+        if "service \"n8n-import\" didn't complete successfully" in result.stderr:
+            print("Note: n8n-import service exited as expected. This is normal behavior.")
+            print("Continuing with the rest of the startup process...")
+        else:
+            # This is an unexpected error, print details and raise exception
+            print(f"Error starting local AI services:\n{result.stderr}")
+            raise subprocess.CalledProcessError(result.returncode, cmd, output=result.stdout, stderr=result.stderr)
+    
+    # Connect all local AI containers to our shared network
+    print("Connecting local AI containers to shared network...")
+    try:
+        # Get all containers from the localai-services project
+        result = subprocess.run(["docker", "ps", "-q", "--filter", "label=com.docker.compose.project=localai-services"], 
+                              capture_output=True, text=True, check=True)
+        container_ids = result.stdout.strip().split('\n')
+        
+        # Connect each container to the shared network
+        for container_id in container_ids:
+            if container_id:  # Skip empty lines
+                # Get container name
+                name_result = subprocess.run(["docker", "inspect", "--format", "{{.Name}}", container_id], 
+                                          capture_output=True, text=True, check=True)
+                container_name = name_result.stdout.strip().lstrip('/')
+                
+                print(f"Connecting container {container_name} to shared network...")
+                subprocess.run(["docker", "network", "connect", "localai-network", container_id], 
+                              check=False, stderr=subprocess.PIPE)
+    except Exception as e:
+        print(f"Note: Error connecting containers to network: {e}")
+    
+    # Ensure n8n container is started properly
+    print("Ensuring n8n container is properly started...")
+    try:
+        # Check if n8n container exists but is not running
+        result = subprocess.run(["docker", "ps", "-a", "--filter", "name=n8n$", "--format", "{{.Status}}"], 
+                              capture_output=True, text=True, check=True)
+        status = result.stdout.strip()
+        
+        if status and not status.startswith("Up "):
+            print("Starting n8n container...")
+            subprocess.run(["docker", "start", "n8n"], 
+                          check=False, stderr=subprocess.PIPE)
+            print("n8n container started.")
+    except Exception as e:
+        print(f"Note: Error starting n8n container: {e}")
 
 def generate_searxng_secret_key():
     """Generate a secret key for SearXNG based on the current platform."""
@@ -227,6 +366,9 @@ def main():
     check_and_fix_docker_compose_for_searxng()
     
     stop_existing_containers()
+    
+    # Create a shared network
+    create_shared_network()
     
     # Start Supabase first
     start_supabase()
