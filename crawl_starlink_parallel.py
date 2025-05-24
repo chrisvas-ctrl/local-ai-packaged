@@ -57,10 +57,13 @@ class CrawlerConfig:
         dynamic_delay: bool = True,           # Whether to use dynamic delays between batches
         request_rate: float = 0.2,            # Requests per second (1/5 = 0.2 for 5 second delay)
         burst: int = 2,                       # Burst capacity for rate limiter
+        max_crawls_per_minute: int = 100,       # Max crawls per minute (0 = no limit)
         output_dir: Optional[str] = None,     # Output directory for markdown files
         cache_mode: CacheMode = CacheMode.BYPASS,  # Cache mode
         title_strategy: str = TitleStrategy.HEADING_FIRST,  # Title extraction strategy
-        skip_existing: bool = True            # Whether to skip already processed URLs
+        skip_existing: bool = True,           # Whether to skip already processed URLs
+        task_poll_interval: float = 5.0,      # Interval between task polling attempts in seconds
+        max_task_polls: int = 5               # Maximum number of task polling attempts
     ):
         self.max_concurrent = max_concurrent
         self.memory_threshold = memory_threshold
@@ -69,17 +72,129 @@ class CrawlerConfig:
         self.dynamic_delay = dynamic_delay
         self.request_rate = request_rate
         self.burst = burst
+        self.max_crawls_per_minute = max_crawls_per_minute
         self.output_dir = output_dir
         self.cache_mode = cache_mode
         self.title_strategy = title_strategy
         self.skip_existing = skip_existing
+        self.task_poll_interval = task_poll_interval
+        self.max_task_polls = max_task_polls
 
         # Create output directory if specified
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
 
 class ErrorInfo:
-    """Stores information about HTTP and other errors"""
+    """Class to handle error information and explanations"""
+    
+    @staticmethod
+    def get_error_code(error_msg):
+        """Extract error code from error message"""
+        # Common error patterns
+        patterns = [
+            r'net::ERR_(\w+)',  # Chrome-style network errors
+            r'NS_ERROR_(\w+)',   # Firefox-style network errors
+            r'Error: (\d+)',     # HTTP status codes
+            r'status=(\d+)',     # Another HTTP status format
+            r'code="(\w+)"',    # XML/HTML error codes
+            r'\[(\w+)\]',        # Bracketed error codes
+            r'status code (\d+)' # Plain status code mention
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, error_msg)
+            if match:
+                return match.group(1)
+        
+        # If no specific code found, use a generic error code
+        if 'timeout' in error_msg.lower():
+            return 'TIMEOUT'
+        elif 'memory' in error_msg.lower():
+            return 'MEMORY_ISSUE'
+        else:
+            return 'UNKNOWN_ERROR'
+    
+    @staticmethod
+    def extract_response_details(error_msg):
+        """Extract HTTP status code and headers from error message if available"""
+        status_code = None
+        headers = {}
+        
+        # Try to extract status code
+        status_patterns = [
+            r'status code (\d+)',
+            r'status=(\d+)',
+            r'Error: (\d+)'
+        ]
+        
+        for pattern in status_patterns:
+            match = re.search(pattern, error_msg)
+            if match:
+                status_code = match.group(1)
+                break
+        
+        # Try to extract headers if they're in the error message
+        headers_match = re.search(r'Headers:\s*({[^}]+})', error_msg)
+        if headers_match:
+            try:
+                headers_str = headers_match.group(1)
+                headers = json.loads(headers_str)
+            except:
+                pass
+        
+        return status_code, headers
+    
+    @staticmethod
+    def get_explanation(error_code, error_msg):
+        """Get explanation for error code"""
+        # HTTP status code explanations
+        http_status_explanations = {
+            '400': "Bad Request - The server cannot process the request due to a client error",
+            '401': "Unauthorized - Authentication is required and has failed or not been provided",
+            '403': "Forbidden - The server understood the request but refuses to authorize it",
+            '404': "Not Found - The requested resource could not be found",
+            '429': "Too Many Requests - You have sent too many requests in a given amount of time",
+            '500': "Internal Server Error - The server has encountered a situation it doesn't know how to handle",
+            '502': "Bad Gateway - The server was acting as a gateway or proxy and received an invalid response",
+            '503': "Service Unavailable - The server is not ready to handle the request",
+            '504': "Gateway Timeout - The server was acting as a gateway or proxy and did not receive a timely response"
+        }
+        
+        # Network error explanations
+        network_error_explanations = {
+            'ABORTED': "The operation was aborted",
+            'CONNECTION_REFUSED': "Connection refused by the server",
+            'CONNECTION_RESET': "Connection was reset",
+            'CONNECTION_CLOSED': "Connection was closed",
+            'CONNECTION_FAILED': "Connection failed",
+            'NAME_NOT_RESOLVED': "DNS name resolution failed",
+            'INTERNET_DISCONNECTED': "Internet connection is down",
+            'ADDRESS_UNREACHABLE': "IP address is unreachable",
+            'TIMEOUT': "The operation timed out",
+            'FAILED': "The operation failed for unspecified reasons",
+            'HTTP_RESPONSE_CODE_FAILURE': "HTTP Response Code Failure - Received an error HTTP status code",
+            'MEMORY_ISSUE': "The operation failed due to memory constraints",
+            'UNKNOWN_ERROR': "An unknown error occurred"
+        }
+        
+        # Extract status code and headers from error message if available
+        status_code, headers = ErrorInfo.extract_response_details(error_msg)
+        
+        # First check if we extracted a status code
+        if status_code and status_code in http_status_explanations:
+            return http_status_explanations[status_code]
+        
+        # Then check if the error code is an HTTP status code
+        if error_code.isdigit() and error_code in http_status_explanations:
+            return http_status_explanations[error_code]
+        
+        # Then check if it's a known network error
+        if error_code in network_error_explanations:
+            return network_error_explanations[error_code]
+        
+        # For unknown codes, provide a generic explanation
+        return f"Error code {error_code} - No detailed explanation available"
+
     # HTTP status code explanations
     HTTP_STATUS_CODES = {
         400: "Bad Request - The server cannot process the request due to a client error",
@@ -138,6 +253,8 @@ class CrawlStats:
         self.process = psutil.Process(os.getpid())
         self.errors = {}  # Dictionary to track errors by URL
         self.skipped = {}  # Dictionary to track skipped URLs
+        # Track crawl timestamps for rate limiting
+        self.crawl_timestamps = []
 
     def log_memory(self, prefix: str = "") -> None:
         """Log current and peak memory usage"""
@@ -206,23 +323,85 @@ class CrawlStats:
             print(f"Error saving to file: {e}")
 
 class RateLimiter:
-    """Simple token bucket rate limiter for pre-batch throttling"""
+    """Simple token bucket rate limiter"""
     def __init__(self, rate: float, burst: int = 1):
         self.rate = rate  # tokens per second
         self.burst = burst  # max tokens
         self.tokens = burst  # current tokens
-        self.last_update = time.time()
+        self.last_time = time.time()
     
     async def acquire(self):
         """Acquire a token, waiting if necessary"""
-        while self.tokens <= 0:
+        while True:
+            # Update tokens based on elapsed time
             now = time.time()
-            time_passed = now - self.last_update
-            self.tokens = min(self.burst, self.tokens + time_passed * self.rate)
-            self.last_update = now
-            if self.tokens <= 0:
+            elapsed = now - self.last_time
+            self.tokens = min(self.burst, self.tokens + elapsed * self.rate)
+            self.last_time = now
+            
+            if self.tokens >= 1:
+                break
+            else:
+                # Wait a bit before checking again
                 await asyncio.sleep(0.1)
         self.tokens -= 1
+
+async def poll_task_result(crawler, task_id: str, config: CrawlerConfig) -> Any:
+    """
+    Poll for the result of an asynchronous task from crawl4AI.
+    
+    Args:
+        crawler: AsyncWebCrawler instance
+        task_id: Task ID returned by crawler.arun
+        config: CrawlerConfig with polling settings
+        
+    Returns:
+        The result of the task or None if polling times out
+    """
+    polls_remaining = config.max_task_polls
+    
+    while polls_remaining > 0:
+        try:
+            # Check if the task has completed
+            print(f"Polling for task result (attempts remaining: {polls_remaining})...")
+            result = await crawler.get_task_result(task_id)
+            
+            # If we got a result (not another task ID), return it
+            if result and not isinstance(result, str):
+                print(f"Task completed successfully after {config.max_task_polls - polls_remaining + 1} attempts")
+                return result
+                
+            # If we got another task ID, continue polling
+            polls_remaining -= 1
+            if polls_remaining > 0:
+                print(f"Task still processing, waiting {config.task_poll_interval}s before next check...")
+                await asyncio.sleep(config.task_poll_interval)
+            
+        except Exception as e:
+            print(f"Error polling task result: {e}")
+            polls_remaining -= 1
+            if polls_remaining > 0:
+                await asyncio.sleep(config.task_poll_interval)
+    
+    print("Task polling timed out, maximum attempts reached")
+    return None
+
+async def is_task_id_response(result) -> bool:
+    """
+    Check if the result from crawler.arun is a task ID instead of actual content.
+    
+    Args:
+        result: Result from crawler.arun
+        
+    Returns:
+        bool: True if the result appears to be a task ID, False otherwise
+    """
+    # Task IDs are typically strings and not markdown content
+    if isinstance(result, str):
+        # Task IDs are usually short strings without markdown formatting
+        if len(result) < 100 and not result.startswith('#') and not result.startswith('<!--'):
+            return True
+    return False
 
 def get_processed_urls(output_dir: str) -> Tuple[Set[str], Set[str]]:
     """
@@ -290,6 +469,9 @@ async def crawl_parallel_with_rate_limiting(urls: List[str], config: CrawlerConf
     print(f"Max concurrent: {config.max_concurrent}")
     print(f"Memory threshold: {config.memory_threshold}%")
     print(f"Rate limiting: {config.request_rate} requests/second (burst: {config.burst})")
+    if config.max_crawls_per_minute > 0:
+        print(f"Max crawls per minute: {config.max_crawls_per_minute}")
+    print(f"Batch delay range: {config.min_batch_delay}-{config.max_batch_delay}s (randomized)")
     if config.output_dir:
         print(f"Output directory: {config.output_dir}")
 
@@ -392,8 +574,25 @@ async def crawl_parallel_with_rate_limiting(urls: List[str], config: CrawlerConf
             
             # Process batch results
             for j, (url, result) in enumerate(zip(batch, batch_results)):
+                # Check if the result is a task ID that needs polling
+                if result and isinstance(result, str) and await is_task_id_response(result):
+                    print(f"Received task ID for {url}, polling for result...")
+                    # Poll for the actual result
+                    polled_result = await poll_task_result(crawler, result, config)
+                    if polled_result:
+                        result = polled_result
+                    else:
+                        # If polling failed, mark as error
+                        stats.fail_count += 1
+                        error_msg = "Task polling timed out after maximum attempts"
+                        stats.errors[url] = error_msg
+                        print(f"❌ Failed: {url} - TASK_TIMEOUT")
+                        continue
+                
                 if result and result.success and result.markdown:
                     stats.success_count += 1
+                    # Record timestamp for rate limiting
+                    stats.crawl_timestamps.append(time.time())
                     
                     # Save to file if output directory specified
                     if config.output_dir:
@@ -416,20 +615,26 @@ async def crawl_parallel_with_rate_limiting(urls: List[str], config: CrawlerConf
                             print(f"❌ Error saving {output_file}: {e}")
                 else:
                     stats.fail_count += 1
-                    error_msg = result.error_message if result and hasattr(result, 'error_message') else "Unknown error"
+                    error_msg = str(result.error) if result.error else "Unknown error"
+                    stats.errors[url] = error_msg
                     
-                    # Extract error code and explanation
-                    error_code, explanation = ErrorInfo.get_error_explanation(str(error_msg))
+                    # Extract error code
+                    error_code = ErrorInfo.get_error_code(error_msg)
+                    error_code_lower = error_code.lower() if error_code else ""
                     
-                    # Store error information
-                    stats.errors[url] = (error_code, explanation)
+                    # Extract HTTP status code and headers if available
+                    status_code, headers = ErrorInfo.extract_response_details(error_msg)
                     
-                    # Print error with code and brief explanation
-                    print(f"❌ [{i + j + 1}/{total_batch}] Error crawling {url}")
-                    print(f"   Error code: {error_code}")
-                    print(f"   Explanation: {explanation}")
+                    # Get explanation for the error
+                    explanation = ErrorInfo.get_explanation(error_code, error_msg)
                     
-                    # Save error information to file
+                    # Log detailed error information
+                    if status_code:
+                        print(f"❌ Failed: {url} - {error_code} (HTTP Status: {status_code})")
+                    else:
+                        print(f"❌ Failed: {url} - {error_code}")
+                    
+                    # Save error information if output directory specified
                     if config.output_dir:
                         # Extract title from URL using the same strategy as successful crawls
                         normal_title = extract_title_from_markdown("", url, config.title_strategy)
@@ -439,26 +644,31 @@ async def crawl_parallel_with_rate_limiting(urls: List[str], config: CrawlerConf
                         
                         # Combine for final title
                         title = normal_title
-                        
-                        # Generate a safe filename with error prefix
-                        safe_title = generate_safe_filename(title, url, page_index)
-                        # Insert error prefix before the extension
-                        base, ext = os.path.splitext(safe_title)
-                        filename = f"{error_prefix}{base}{ext}"
-                        output_file = os.path.join(config.output_dir, filename)
-                        
                         try:
-                            with open(output_file, "w", encoding="utf-8") as f:
-                                # Add metadata header
-                                f.write(f"<!--\ntitle: \"Error: {error_code}\"\n")
+                            # Write error information to file
+                            with open(output_file, 'w', encoding='utf-8') as f:
+                                # Add metadata
+                                f.write(f"---\n")
                                 f.write(f"url: \"{url}\"\n")
                                 f.write(f"error_code: \"{error_code}\"\n")
-                                f.write(f"error_explanation: \"{explanation}\"\n-->\n\n")
+                                f.write(f"error_explanation: \"{explanation}\"\n")
+                                if status_code:
+                                    f.write(f"http_status_code: \"{status_code}\"\n")
+                                f.write(f"-->\n\n")
                                 
-                                # Write error information as markdown content
+                                # Add error information
                                 f.write(f"# Error: {error_code}\n\n")
                                 f.write(f"## URL\n{url}\n\n")
                                 f.write(f"## Explanation\n{explanation}\n\n")
+                                
+                                # Add HTTP status code if available
+                                if status_code:
+                                    f.write(f"## HTTP Status Code\n{status_code}\n\n")
+                                
+                                # Add headers if available
+                                if headers:
+                                    f.write(f"## Response Headers\n```json\n{json.dumps(headers, indent=2)}\n```\n\n")
+                                
                                 f.write(f"## Error Details\n```\n{error_msg}\n```\n")
                                 
                             print(f"   Saved error information to: {output_file}")
@@ -468,25 +678,60 @@ async def crawl_parallel_with_rate_limiting(urls: List[str], config: CrawlerConf
             
             # Add dynamic delay between batches if not the last batch
             if i + config.max_concurrent < len(target_urls):
-                # Calculate delay based on configuration
+                # Calculate delay for next batch
                 if config.dynamic_delay:
-                    # Use dynamic delay with exponential backoff based on error rate
-                    error_rate = stats.fail_count / (stats.success_count + stats.fail_count + 0.001)
+                    # Calculate error rate for this batch
+                    batch_error_rate = 1.0 - (sum(1 for r in batch_results if r and r.success) / len(batch))
                     
-                    # Increase delay as error rate increases
-                    base_delay = config.min_batch_delay + (error_rate * 2 * (config.max_batch_delay - config.min_batch_delay))
+                    # Adjust delay based on error rate
+                    # Higher error rate = longer delay
+                    base_delay = config.min_batch_delay + batch_error_rate * (config.max_batch_delay - config.min_batch_delay)
                     
-                    # Add randomness to avoid detection patterns (±20%)
-                    jitter = random.uniform(0.8, 1.2)
-                    delay = base_delay * jitter
-                    
-                    # Ensure delay is within configured bounds
-                    delay = max(config.min_batch_delay, min(config.max_batch_delay, delay))
+                    # Apply exponential backoff if error rate is very high
+                    if batch_error_rate > 0.8:  # More than 80% errors
+                        # Apply a more aggressive delay (up to 3x the max delay)
+                        backoff_factor = min(3.0, 1.0 + batch_error_rate * 2)
+                        max_delay = config.max_batch_delay * backoff_factor
+                        # Use random delay between base_delay and max_delay
+                        delay = random.uniform(base_delay, max_delay)
+                        print(f"⚠️ High error rate detected ({batch_error_rate:.2f}), applying backoff with random delay: {delay:.2f}s")
+                    else:
+                        # Use random delay between min_batch_delay and calculated base_delay
+                        delay = random.uniform(config.min_batch_delay, base_delay)
+                        print(f"Batch error rate: {batch_error_rate:.2f}, Random delay: {delay:.2f}s")
                 else:
-                    # Use fixed delay with small jitter
-                    delay = config.min_batch_delay
+                    # Use random delay between min and max
+                    delay = random.uniform(config.min_batch_delay, config.max_batch_delay)
+                    print(f"Using random delay: {delay:.2f}s")
                 
-                # Round to 1 decimal place for display
+                # Check if we need to wait longer to comply with max_crawls_per_minute
+                if config.max_crawls_per_minute > 0 and stats.crawl_timestamps:
+                    # Remove timestamps older than 1 minute
+                    current_time = time.time()
+                    stats.crawl_timestamps = [ts for ts in stats.crawl_timestamps if current_time - ts < 60]
+                    
+                    # Calculate crawls in the last minute
+                    crawls_last_minute = len(stats.crawl_timestamps)
+                    
+                    # Calculate how many more crawls we can do in this batch
+                    available_slots = config.max_crawls_per_minute - crawls_last_minute
+                    
+                    # If we're approaching the limit, add extra delay
+                    if available_slots < len(batch):
+                        # Calculate how long to wait for slots to free up
+                        if available_slots <= 0:
+                            # No slots available, wait until oldest timestamp is more than a minute ago
+                            wait_time = 60 - (current_time - stats.crawl_timestamps[0])
+                            print(f"⏱️ Rate limit reached ({crawls_last_minute}/{config.max_crawls_per_minute} per minute), waiting {wait_time:.2f}s for slots to free up")
+                            delay = max(delay, wait_time)
+                        else:
+                            # Some slots available, but not enough for the whole batch
+                            # Add delay to spread the remaining requests over the minute
+                            spread_delay = 60 / config.max_crawls_per_minute * (len(batch) - available_slots)
+                            print(f"⏱️ Approaching rate limit ({crawls_last_minute}/{config.max_crawls_per_minute} per minute), adding {spread_delay:.2f}s delay")
+                            delay = max(delay, spread_delay)
+                    
+                # Wait before next batch
                 display_delay = round(delay, 1)
                 print(f"Waiting {display_delay}s before next batch...")
                 
@@ -497,10 +742,8 @@ async def crawl_parallel_with_rate_limiting(urls: List[str], config: CrawlerConf
         print(f"❌ Critical error during crawling: {e}")
         raise
     finally:
-        # Close the crawler
-        await crawler.stop()
-        
-        # Print summary
+        # No need to explicitly stop the crawler - it doesn't have a stop method
+        # Just print the summary
         stats.print_summary()
     
     return stats.success_count, stats.fail_count
@@ -742,8 +985,11 @@ async def main():
             "dynamic_delay": True,  # Use dynamic delays
             "min_delay": 2.0,  # 2 seconds minimum delay
             "max_delay": 5.0,  # 5 seconds maximum delay
-            "title_strategy": TitleStrategy.HEADING_FIRST,  # Extract from headings first
-            "skip_existing": True  # Skip already processed URLs
+            "max_crawls_per_minute": 0,  # No limit
+            "title_strategy": TitleStrategy.URL_FIRST,  # Extract from URL first
+            "skip_existing": True,  # Skip already processed URLs
+            "task_poll_interval": 5.0,  # Wait 5 seconds between task polls
+            "max_task_polls": 3  # Try up to 3 times before giving up
         }
         
         # Define strategies list for reference
@@ -761,9 +1007,11 @@ async def main():
         print(f"Max concurrent crawlers: {default_config['max_concurrent']}")
         print(f"Request rate: {default_config['request_rate']} requests/second")
         print(f"Delay strategy: {'Dynamic' if default_config['dynamic_delay'] else 'Fixed'}")
-        print(f"Delay range: {default_config['min_delay']}-{default_config['max_delay']} seconds")
+        print(f"Delay range: {default_config['min_delay']}-{default_config['max_delay']} seconds (randomized)")
+        print(f"Max crawls per minute: {default_config['max_crawls_per_minute']}")
         print(f"Title strategy: {TitleStrategy.get_description(default_config['title_strategy'])}")
         print(f"Skip existing: {'Yes (only successful files)' if default_config['skip_existing'] else 'No'}")
+        print(f"Task polling: {default_config['max_task_polls']} attempts every {default_config['task_poll_interval']} seconds")
         
         # Ask if user wants to use defaults or customize
         customize = input("\nUse these default settings? (y/n, default: y): ").lower() == 'n'
@@ -775,8 +1023,11 @@ async def main():
         dynamic_delay = default_config['dynamic_delay']
         min_delay = default_config['min_delay']
         max_delay = default_config['max_delay']
+        max_crawls_per_minute = default_config['max_crawls_per_minute']
         title_strategy = default_config['title_strategy']
         skip_existing = default_config['skip_existing']
+        task_poll_interval = default_config['task_poll_interval']
+        max_task_polls = default_config['max_task_polls']
         
         # If user wants to customize, prompt for each setting
         if customize:
@@ -837,6 +1088,14 @@ async def main():
             except ValueError:
                 pass
                 
+            # Ask for max crawls per minute
+            try:
+                max_crawls_input = input(f"\nMax crawls per minute (0 for no limit, default: 0): ")
+                if max_crawls_input:
+                    max_crawls_per_minute = int(max_crawls_input)
+            except ValueError:
+                print("Invalid input, using default value")
+                
             # Ask for title extraction strategy
             print("\nSelect title extraction strategy:")
             for i, strategy in enumerate(strategies, 1):
@@ -854,6 +1113,22 @@ async def main():
             skip_input = input(f"\nSkip successfully processed URLs? (y/n, default: {'y' if skip_existing else 'n'}): ").lower()
             if skip_input in ['y', 'n']:
                 skip_existing = (skip_input == 'y')
+                
+            # Ask for task polling interval
+            try:
+                poll_interval_input = input(f"\nTask polling interval in seconds (default: {task_poll_interval}): ")
+                if poll_interval_input:
+                    task_poll_interval = float(poll_interval_input)
+            except ValueError:
+                print("Invalid input, using default value")
+                
+            # Ask for maximum task polling attempts
+            try:
+                max_polls_input = input(f"\nMaximum task polling attempts (default: {max_task_polls}): ")
+                if max_polls_input:
+                    max_task_polls = int(max_polls_input)
+            except ValueError:
+                print("Invalid input, using default value")
             
         # Create crawler configuration
         config = CrawlerConfig(
@@ -864,16 +1139,21 @@ async def main():
             dynamic_delay=dynamic_delay,
             request_rate=request_rate,
             burst=2,
+            max_crawls_per_minute=max_crawls_per_minute,
             output_dir=__output__,
             title_strategy=title_strategy,
-            skip_existing=skip_existing
+            skip_existing=skip_existing,
+            task_poll_interval=task_poll_interval,
+            max_task_polls=max_task_polls
         )
         
         # Calculate and show processing time (approximate)
         process_urls = batch_size if batch_size else total_urls
         # Estimate time based on number of batches and rate limiting
         num_batches = (process_urls + config.max_concurrent - 1) // config.max_concurrent
-        process_time = (num_batches * (1/config.request_rate + config.batch_delay)) / 60
+        # Use average of min and max delay for estimation
+        avg_batch_delay = (config.min_batch_delay + config.max_batch_delay) / 2
+        process_time = (num_batches * (1/config.request_rate + avg_batch_delay)) / 60
         print(f"Estimated minimum processing time: {process_time:.1f} minutes")
         
         # Ask for confirmation
