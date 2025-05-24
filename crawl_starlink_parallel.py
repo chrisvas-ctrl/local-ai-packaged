@@ -977,19 +977,26 @@ async def main():
         print(f"\nFound {total_urls} URLs to crawl")
         print("This may take a while for large numbers of URLs.")
         
-        # Set default configuration values
+        # Create a default config instance with our preferred title strategy
+        # This ensures we use the defaults from CrawlerConfig for everything else
+        default_config_obj = CrawlerConfig(
+            output_dir=__output__,
+            title_strategy=TitleStrategy.URL_FIRST  # Override default title strategy
+        )
+        
+        # Extract values from the config object for UI display and customization
         default_config = {
-            "batch_size": None,  # Process all URLs
-            "max_concurrent": 5,  # 5 concurrent crawlers
-            "request_rate": 0.2,  # 1 request per 5 seconds
-            "dynamic_delay": True,  # Use dynamic delays
-            "min_delay": 2.0,  # 2 seconds minimum delay
-            "max_delay": 5.0,  # 5 seconds maximum delay
-            "max_crawls_per_minute": 0,  # No limit
-            "title_strategy": TitleStrategy.URL_FIRST,  # Extract from URL first
-            "skip_existing": True,  # Skip already processed URLs
-            "task_poll_interval": 5.0,  # Wait 5 seconds between task polls
-            "max_task_polls": 3  # Try up to 3 times before giving up
+            "batch_size": None,  # Not part of CrawlerConfig
+            "max_concurrent": default_config_obj.max_concurrent,
+            "request_rate": default_config_obj.request_rate,
+            "dynamic_delay": default_config_obj.dynamic_delay,
+            "min_delay": default_config_obj.min_batch_delay,
+            "max_delay": default_config_obj.max_batch_delay,
+            "max_crawls_per_minute": default_config_obj.max_crawls_per_minute,
+            "title_strategy": default_config_obj.title_strategy,
+            "skip_existing": default_config_obj.skip_existing,
+            "task_poll_interval": default_config_obj.task_poll_interval,
+            "max_task_polls": default_config_obj.max_task_polls
         }
         
         # Define strategies list for reference
