@@ -5,12 +5,14 @@ A modular web crawler designed specifically for crawling and parsing Starlink-re
 ## Features
 
 - **Parallel Crawling**: Efficiently crawl multiple URLs concurrently with configurable parallelism
-- **Rate Limiting**: Built-in rate limiting to prevent overloading target servers
+- **Rate Limiting**: Built-in rate limiting with multiple strategies to prevent overloading target servers and avoid bot detection
 - **Memory Management**: Automatic memory usage monitoring to prevent crashes
 - **Flexible Title Extraction**: Multiple strategies for extracting titles from content
 - **Error Handling**: Comprehensive error tracking and explanation
 - **Progress Tracking**: Detailed statistics during crawling operations
 - **Configurable**: Extensive configuration options for customizing crawling behavior
+- **Configuration Persistence**: Save your preferred settings between sessions
+- **Bot Detection Avoidance**: Staggered request patterns to appear more human-like
 
 ## Installation
 
@@ -90,8 +92,9 @@ The `CrawlerConfig` class provides numerous options to customize the crawler's b
 
 - `max_concurrent`: Maximum number of concurrent requests
 - `memory_threshold`: Memory usage threshold percentage
-- `min_batch_delay`, `max_batch_delay`: Delay range between batches
-- `dynamic_delay`: Whether to adjust delay based on error rates
+- `min_batch_delay`, `max_batch_delay`: Delay values between batches
+- `delay_type`: Type of delay between batches ("fixed" or "random")
+- `min_request_delay`, `max_request_delay`: Delay values between individual requests in a batch
 - `request_rate`: Requests per second rate limit
 - `burst`: Burst size for rate limiting
 - `max_crawls_per_minute`: Maximum crawls per minute
@@ -100,6 +103,29 @@ The `CrawlerConfig` class provides numerous options to customize the crawler's b
 - `skip_existing`: Whether to skip already processed URLs
 - `task_poll_interval`: Interval between task polling attempts
 - `max_task_polls`: Maximum number of task polling attempts
+
+## Configuration Persistence
+
+The crawler can save your configuration preferences between sessions:
+
+- Automatically loads saved settings on startup
+- Offers to save your current configuration before starting a crawl
+- Stores settings in `~/.starlink_crawler_config.json`
+
+This means you don't have to reconfigure your preferred settings each time you run the crawler.
+
+## Bot Detection Avoidance
+
+To reduce the risk of triggering bot detection systems, the crawler implements:
+
+1. **Batch Delays**: Configurable delays between batches of requests
+   - Fixed delay: Uses the same delay between each batch
+   - Random delay: Randomly selects a delay between min and max values
+
+2. **Per-Request Delays**: Small random delays between individual requests in a batch
+   - Makes request patterns appear more human-like
+   - Staggered requests instead of simultaneous bursts
+   - Fully configurable min/max delay values
 
 ## Title Extraction Strategies
 

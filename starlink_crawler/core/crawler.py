@@ -47,7 +47,10 @@ async def crawl_parallel_with_rate_limiting(urls: List[str], config: CrawlerConf
     print(f"Rate limiting: {config.request_rate} requests/second (burst: {config.burst})")
     if config.max_crawls_per_minute > 0:
         print(f"Max crawls per minute: {config.max_crawls_per_minute}")
-    print(f"Batch delay range: {config.min_batch_delay}-{config.max_batch_delay}s (randomized)")
+    if config.delay_type == "fixed":
+        print(f"Batch delay: {config.min_batch_delay}s (fixed)")
+    else:
+        print(f"Batch delay range: {config.min_batch_delay}-{config.max_batch_delay}s (randomized)")
     if config.output_dir:
         print(f"Output directory: {config.output_dir}")
 
@@ -58,6 +61,10 @@ async def crawl_parallel_with_rate_limiting(urls: List[str], config: CrawlerConf
         # For better performance in Docker or low-memory environments:
         extra_args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"],
     )
+    
+    # Print delay type and request delay settings
+    print(f"Delay type: {'Fixed' if config.delay_type == 'fixed' else 'Random'}")
+    print(f"Request delays: {config.min_request_delay}-{config.max_request_delay}s between requests in a batch")
 
     # Initialize crawler
     crawl_config = CrawlerRunConfig(
@@ -131,9 +138,16 @@ async def crawl_parallel_with_rate_limiting(urls: List[str], config: CrawlerConf
             stats.log_memory(f"Before batch {batch_num}: ")
             
             # Process the batch in parallel with manual concurrency management
-            # Create tasks for each URL in the batch
+            # Create tasks for each URL in the batch with small delays between them
             tasks = []
             for url in batch:
+                # Add a small random delay between requests (except for the first one)
+                if len(tasks) > 0 and config.min_request_delay > 0:
+                    # Use a random delay between min and max request delay
+                    delay = random.uniform(config.min_request_delay, config.max_request_delay)
+                    print(f"  Adding {delay:.2f}s delay before requesting {url}")
+                    await asyncio.sleep(delay)
+                
                 # Create a task for each URL
                 task = crawler.arun(
                     url=url,
@@ -257,30 +271,14 @@ async def crawl_parallel_with_rate_limiting(urls: List[str], config: CrawlerConf
                         except Exception as e:
                             print(f"   Error saving error information: {e}")
             
-            # Add dynamic delay between batches if not the last batch
+            # Add delay between batches if not the last batch
             if i + config.max_concurrent < len(target_urls):
-                # Calculate delay for next batch
-                if config.dynamic_delay:
-                    # Calculate error rate for this batch
-                    batch_error_rate = 1.0 - (sum(1 for r in batch_results if r and r.success) / len(batch))
-                    
-                    # Adjust delay based on error rate
-                    # Higher error rate = longer delay
-                    base_delay = config.min_batch_delay + batch_error_rate * (config.max_batch_delay - config.min_batch_delay)
-                    
-                    # Apply exponential backoff if error rate is very high
-                    if batch_error_rate > 0.8:  # More than 80% errors
-                        # Apply a more aggressive delay (up to 3x the max delay)
-                        backoff_factor = min(3.0, 1.0 + batch_error_rate * 2)
-                        max_delay = config.max_batch_delay * backoff_factor
-                        # Use random delay between base_delay and max_delay
-                        delay = random.uniform(base_delay, max_delay)
-                        print(f"⚠️ High error rate detected ({batch_error_rate:.2f}), applying backoff with random delay: {delay:.2f}s")
-                    else:
-                        # Use random delay between min_batch_delay and calculated base_delay
-                        delay = random.uniform(config.min_batch_delay, base_delay)
-                        print(f"Batch error rate: {batch_error_rate:.2f}, Random delay: {delay:.2f}s")
-                else:
+                # Apply delay based on delay type
+                if config.delay_type == "fixed":
+                    # Use fixed delay (min_batch_delay)
+                    delay = config.min_batch_delay
+                    print(f"Using fixed delay: {delay:.2f}s")
+                else:  # random delay
                     # Use random delay between min and max
                     delay = random.uniform(config.min_batch_delay, config.max_batch_delay)
                     print(f"Using random delay: {delay:.2f}s")

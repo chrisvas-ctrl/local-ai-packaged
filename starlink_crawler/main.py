@@ -8,6 +8,7 @@ import asyncio
 
 # Import from our package
 from starlink_crawler.config import TitleStrategy, CrawlerConfig
+from starlink_crawler.config.config_persistence import load_config, save_config, create_config_from_dict
 from starlink_crawler.parsers import get_urls_from_source
 from starlink_crawler.core import crawl_parallel_with_rate_limiting
 
@@ -68,21 +69,33 @@ async def main():
         print(f"\nFound {total_urls} URLs to crawl")
         print("This may take a while for large numbers of URLs.")
         
-        # Create a default config instance with our preferred title strategy
-        # This ensures we use the defaults from CrawlerConfig for everything else
-        default_config_obj = CrawlerConfig(
-            output_dir=__output__,
-            title_strategy=TitleStrategy.URL_FIRST  # Override default title strategy
-        )
+        # Try to load saved configuration
+        saved_config = load_config()
+        
+        # Create a default config instance
+        # If we have saved config, use it; otherwise use defaults from CrawlerConfig
+        if saved_config:
+            print("\n✅ Found saved configuration settings")
+            default_config_obj = create_config_from_dict(saved_config, output_dir=__output__)
+            # Override title strategy to our preferred one
+            default_config_obj.title_strategy = TitleStrategy.URL_FIRST
+        else:
+            print("\nNo saved configuration found, using defaults")
+            default_config_obj = CrawlerConfig(
+                output_dir=__output__,
+                title_strategy=TitleStrategy.URL_FIRST  # Override default title strategy
+            )
         
         # Extract values from the config object for UI display and customization
         default_config = {
             "batch_size": None,  # Not part of CrawlerConfig
             "max_concurrent": default_config_obj.max_concurrent,
             "request_rate": default_config_obj.request_rate,
-            "dynamic_delay": default_config_obj.dynamic_delay,
+            "delay_type": default_config_obj.delay_type,
             "min_delay": default_config_obj.min_batch_delay,
             "max_delay": default_config_obj.max_batch_delay,
+            "min_request_delay": default_config_obj.min_request_delay,
+            "max_request_delay": default_config_obj.max_request_delay,
             "max_crawls_per_minute": default_config_obj.max_crawls_per_minute,
             "title_strategy": default_config_obj.title_strategy,
             "skip_existing": default_config_obj.skip_existing,
@@ -104,8 +117,12 @@ async def main():
         print(f"Batch size: {'All URLs' if default_config['batch_size'] is None else default_config['batch_size']}")
         print(f"Max concurrent crawlers: {default_config['max_concurrent']}")
         print(f"Request rate: {default_config['request_rate']} requests/second")
-        print(f"Delay strategy: {'Dynamic' if default_config['dynamic_delay'] else 'Fixed'}")
-        print(f"Delay range: {default_config['min_delay']}-{default_config['max_delay']} seconds (randomized)")
+        print(f"Delay type: {'Random' if default_config['delay_type'] == 'random' else 'Fixed'}")
+        if default_config['delay_type'] == 'random':
+            print(f"Batch delay range: {default_config['min_delay']}-{default_config['max_delay']} seconds (randomized)")
+        else:
+            print(f"Batch delay: {default_config['min_delay']} seconds (fixed)")
+        print(f"Request delay range: {default_config['min_request_delay']}-{default_config['max_request_delay']} seconds between requests in a batch")
         print(f"Max crawls per minute: {default_config['max_crawls_per_minute']}")
         print(f"Title strategy: {TitleStrategy.get_description(default_config['title_strategy'])}")
         print(f"Skip existing: {'Yes (only successful files)' if default_config['skip_existing'] else 'No'}")
@@ -118,9 +135,11 @@ async def main():
         batch_size = default_config['batch_size']
         max_concurrent = default_config['max_concurrent']
         request_rate = default_config['request_rate']
-        dynamic_delay = default_config['dynamic_delay']
+        delay_type = default_config['delay_type']
         min_delay = default_config['min_delay']
         max_delay = default_config['max_delay']
+        min_request_delay = default_config['min_request_delay']
+        max_request_delay = default_config['max_request_delay']
         max_crawls_per_minute = default_config['max_crawls_per_minute']
         title_strategy = default_config['title_strategy']
         skip_existing = default_config['skip_existing']
@@ -163,10 +182,15 @@ async def main():
             except ValueError:
                 print("Invalid input, using default value")
                 
-            # Ask for dynamic delay
-            dynamic_input = input(f"\nUse dynamic delay based on error rates? (y/n, default: {'y' if dynamic_delay else 'n'}): ").lower()
-            if dynamic_input in ['y', 'n']:
-                dynamic_delay = (dynamic_input == 'y')
+            # Ask for delay type
+            print("\nSelect delay type:")
+            print("1: Fixed delay (always use the minimum delay value)")
+            print("2: Random delay (randomly select between minimum and maximum delay)")
+            delay_input = input(f"Select delay type (1-2, default: {2 if delay_type == 'random' else 1}): ")
+            if delay_input == '1':
+                delay_type = 'fixed'
+            elif delay_input == '2':
+                delay_type = 'random'
                 
             # Ask for min delay
             try:
@@ -187,6 +211,28 @@ async def main():
                     if max_delay < min_delay:
                         print(f"Max delay must be >= min delay ({min_delay}), using default")
                         max_delay = default_config['max_delay']
+            except ValueError:
+                print("Invalid input, using default value")
+                
+            # Ask for min request delay
+            try:
+                min_request_delay_input = input(f"\nMinimum delay between requests in a batch in seconds (default: {min_request_delay}): ")
+                if min_request_delay_input:
+                    min_request_delay = float(min_request_delay_input)
+                    if min_request_delay < 0:
+                        print("Invalid value, using default")
+                        min_request_delay = default_config['min_request_delay']
+            except ValueError:
+                print("Invalid input, using default value")
+                
+            # Ask for max request delay
+            try:
+                max_request_delay_input = input(f"\nMaximum delay between requests in a batch in seconds (default: {max_request_delay}): ")
+                if max_request_delay_input:
+                    max_request_delay = float(max_request_delay_input)
+                    if max_request_delay < min_request_delay:
+                        print(f"Max request delay must be >= min request delay ({min_request_delay}), using default")
+                        max_request_delay = default_config['max_request_delay']
             except ValueError:
                 print("Invalid input, using default value")
                 
@@ -238,7 +284,9 @@ async def main():
             memory_threshold=70.0,
             min_batch_delay=min_delay,
             max_batch_delay=max_delay,
-            dynamic_delay=dynamic_delay,
+            delay_type=delay_type,
+            min_request_delay=min_request_delay,
+            max_request_delay=max_request_delay,
             request_rate=request_rate,
             burst=2,
             max_crawls_per_minute=max_crawls_per_minute,
@@ -258,7 +306,15 @@ async def main():
         process_time = (num_batches * (1/config.request_rate + avg_batch_delay)) / 60
         print(f"Estimated minimum processing time: {process_time:.1f} minutes")
         
-        # Ask for confirmation
+        # Ask if user wants to save this configuration for future sessions
+        save_response = input(f"\nSave this configuration for future sessions? (y/n): ")
+        if save_response.lower() == 'y':
+            if save_config(config):
+                print("Configuration saved successfully!")
+            else:
+                print("Failed to save configuration.")
+        
+        # Ask for confirmation to proceed with crawling
         response = input(f"\nDo you want to proceed with crawling {process_urls} URLs? (y/n): ")
         if response.lower() != 'y':
             print("Operation cancelled by user.")

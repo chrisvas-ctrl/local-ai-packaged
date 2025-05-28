@@ -18,7 +18,9 @@ class CrawlerConfig:
         memory_threshold: float = 70.0,       # Memory threshold percentage
         min_batch_delay: float = 2.0,         # Minimum delay between batches in seconds
         max_batch_delay: float = 5.0,         # Maximum delay between batches in seconds
-        dynamic_delay: bool = True,           # Whether to use dynamic delays between batches
+        delay_type: str = "random",           # Delay type: "fixed" or "random"
+        min_request_delay: float = 0.1,       # Minimum delay between requests in a batch in seconds
+        max_request_delay: float = 0.5,       # Maximum delay between requests in a batch in seconds
         request_rate: float = 0.2,            # Requests per second (1/5 = 0.2 for 5 second delay)
         burst: int = 2,                       # Burst capacity for rate limiter
         max_crawls_per_minute: int = 100,     # Max crawls per minute (0 = no limit)
@@ -36,7 +38,9 @@ class CrawlerConfig:
             memory_threshold: Memory threshold percentage to pause crawling
             min_batch_delay: Minimum delay between batches in seconds
             max_batch_delay: Maximum delay between batches in seconds
-            dynamic_delay: Whether to use dynamic delays between batches
+            delay_type: Type of delay between batches ("fixed" or "random")
+            min_request_delay: Minimum delay between requests in a batch in seconds
+            max_request_delay: Maximum delay between requests in a batch in seconds
             request_rate: Requests per second (1/5 = 0.2 for 5 second delay)
             burst: Burst capacity for rate limiter
             max_crawls_per_minute: Max crawls per minute (0 = no limit)
@@ -51,7 +55,9 @@ class CrawlerConfig:
         self.memory_threshold = memory_threshold
         self.min_batch_delay = min_batch_delay
         self.max_batch_delay = max_batch_delay
-        self.dynamic_delay = dynamic_delay
+        self.delay_type = delay_type
+        self.min_request_delay = min_request_delay
+        self.max_request_delay = max_request_delay
         self.request_rate = request_rate
         self.burst = burst
         self.max_crawls_per_minute = max_crawls_per_minute
